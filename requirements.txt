@@ -1,0 +1,9 @@
+numpy
+scipy
+opencv-contrib-python
+matplotlib
+scikit-video
+# torch --index-url https://download.pytorch.org/whl/cpu
+# torchvision --index-url https://download.pytorch.org/whl/cpu
+# torchaudio --index-url https://download.pytorch.org/whl/cpu
+# git+https://github.com/facebookresearch/detectron2.git

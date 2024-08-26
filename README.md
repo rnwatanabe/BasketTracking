@@ -28,6 +28,13 @@ https://user-images.githubusercontent.com/28055473/235509681-c2008686-43b4-40a4-
 * [Numpy](https://numpy.org/)
 * [Matplotlib](https://matplotlib.org/)
 
+
+- pip install -r requirements.txt 
+
+- pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
+
+- python -m pip install 'git+https://github.com/facebookresearch/detectron2.git'
+
 ### Usage
 
 The system can be executed from the ```main.py```.

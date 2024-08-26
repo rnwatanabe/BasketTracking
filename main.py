@@ -8,16 +8,17 @@ from rectify_court import *
 from video_handler import *
 
 
-def get_frames(video_path, central_frame, mod):
+def get_frames(video_path, central_frame, dec_times, topcut):
     frames = []
     cap = cv2.VideoCapture(video_path)
     index = 0
 
     while cap.isOpened():
         ret, frame = cap.read()
-
-        if (index % mod) == 0:
-            frames.append(frame[TOPCUT:, :])
+        if frame is None:             #if frame is None
+            break  
+        if (index % dec_times) == 0:
+            frames.append(frame[topcut:, :])
 
         if not ret or frame is None:
             cap.release()
@@ -31,7 +32,7 @@ def get_frames(video_path, central_frame, mod):
     cv2.destroyAllWindows()
 
     print(f"Number of frames : {len(frames)}")
-    plt.title(f"Centrale {frames[central_frame].shape}")
+    plt.title(f"Central {frames[central_frame].shape}")
     plt.imshow(frames[central_frame])
     plt.show()
 

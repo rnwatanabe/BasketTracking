@@ -10,7 +10,7 @@ flann = cv2.FlannBasedMatcher(index_params, search_params)
 
 
 def collage(frames, direction=1, plot=False):
-    sift = cv2.xfeatures2d.SIFT_create()
+    sift = cv2.SIFT_create()
 
     if direction == 1:
         current_mosaic = frames[0]
@@ -93,9 +93,10 @@ def add_frame(frame, pano, pano_enhanced, plot=False):
     return avg_pano
 
 
-def binarize_erode_dilate(img, plot=False):
+def binarize_erode_dilate(img, thresh=130, plot=False):
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    th, img_otsu = cv2.threshold(gray, thresh=100, maxval=255, type=cv2.THRESH_OTSU)
+    if plot: plt_plot(gray, "Panorama after gray", cmap="gray")
+    th, img_otsu = cv2.threshold(gray, thresh=thresh, maxval=255, type=cv2.THRESH_BINARY)
 
     if plot: plt_plot(img_otsu, "Panorama after Otsu", cmap="gray")
 
@@ -107,6 +108,109 @@ def binarize_erode_dilate(img, plot=False):
 
     if plot: plt_plot(img_otsu, "After Erosion-Dilation", cmap="gray")
     return img_otsu
+
+def encontrar_centros(img, corners,  plot=False):
+    hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
+    hsv[:,:,0] = hsv[:,:,1]
+    hsv[:,:,2] = hsv[:,:,1]
+    th, img_otsu = cv2.threshold(hsv, thresh=60, maxval=255, type=cv2.THRESH_BINARY)
+    
+    if plot: plt_plot(img_otsu, "Panorama after Thres", cmap="gray")
+
+    kernel = np.array([[0, 1, 0],
+                       [0, 1, 0],
+                       [0, 1, 0]], np.uint8)
+    img_otsu = cv2.erode(img_otsu, kernel, iterations=20)
+    img_otsu = cv2.dilate(img_otsu, kernel, iterations=20)
+    # img_otsu = cv2.erode(img_otsu, kernel, iterations=10)
+    
+    kernel = np.array([[0, 0, 0],
+                       [1, 1, 1],
+                       [0, 0, 0]], np.uint8)
+    img_otsu = cv2.erode(img_otsu, kernel, iterations=20)
+    img_otsu = cv2.dilate(img_otsu, kernel, iterations=20)
+    
+    centro = corners.mean(axis=0)
+    circle_radius = int(0.17*img_otsu.shape[0])
+    print(circle_radius)
+    cv2.circle(img_otsu, (int(centro[0]), int(centro[1])), circle_radius, (0,0,0), -1)
+    if plot: plt_plot(img_otsu, "After Erosion-Dilation", cmap="gray")
+    img_otsu[:,:int(img_otsu.shape[1]//2*0.8)] = 0
+    img_otsu[:,int(img_otsu.shape[1]//2*1.2):] = 0
+
+    mask = np.zeros(img_otsu.shape, dtype=np.uint8)
+    cnts = cv2.findContours(img_otsu[:,:,0], cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    
+
+    cnts = cnts[0] if len(cnts) == 2 else cnts[1]
+    
+    areas = np.zeros(len(cnts))
+    
+    for i in range(len(cnts)):
+        area = cv2.contourArea(cnts[i])
+        areas[i] = area
+        
+    areas_ind = np.argsort(areas)[-2:]
+    contours_court = []
+    for i in areas_ind:
+        print(areas[i])
+        cv2.drawContours(mask, [cnts[i]], -1, (36, 255, 12), -1)
+        contours_court.append(cnts[i])
+    img_otsu = mask
+    
+    if plot: plt_plot(img_otsu, "After corner1", cmap="gray")
+    hull = []
+    for i in range(2):
+        hull.append(cv2.convexHull(contours_court[i]))
+        cv2.drawContours(img_otsu, [hull[i]], -1, (255,0,0), -1)
+    if plot: plt_plot(img_otsu, "After Hull", cmap="gray")
+    cantos = []
+    for i in range(2):
+        x, y, w, h = cv2.boundingRect(hull[i])   
+        corners = np.zeros((4,2))
+        corners[0] = np.array([x, y+h])
+        corners[1] = np.array([x, y])
+        corners[2] = np.array([x+w, y])
+        corners[3] = np.array([x+w, y+h])
+        approx = corners.copy()
+        cantos.append(order_corners(corners))
+        print(approx)
+        cv2.rectangle(img_otsu, (x,y),(x+w, y+h), 100, 5)
+    
+    if plot: plt_plot(img_otsu, "After Rectangle Fit", cmap="gray")
+    centro0 = cantos[0].mean(axis=0)
+    centro1 = cantos[1].mean(axis=0)
+    centros = []
+    if centro0[0] < centro1[0]:
+        centros.append((cantos[0][2]+cantos[1][1])/2)
+        centros.append((cantos[0][3]+cantos[1][0])/2)
+    else:
+        centros.append((cantos[0][1]+cantos[1][2])/2)
+        centros.append((cantos[0][0]+cantos[1][3])/2)
+    centros = np.array(centros).astype(int)
+    cv2.circle(img, (centros[0][0], centros[0][1]), 15, (255,0,0),-1)
+    cv2.circle(img, (centros[1][0], centros[1][1]), 15, (255,0,0),-1)
+    if plot: plt_plot(img, "Centres", cmap="gray")
+    
+    return centros
+
+def order_corners(corners):
+    center = np.mean(corners, axis=0)
+    cantos = np.zeros((4,2))
+    for i in range(4):
+        if corners[i][0]<center[0] and corners[i][1]<center[1]:
+            tl_court = corners[i]
+        if corners[i][0]<center[0] and corners[i][1]>center[1]:
+            bl_court = corners[i]
+        if corners[i][0]>center[0] and corners[i][1]<center[1]:
+            tr_court = corners[i]
+        if corners[i][0]>center[0] and corners[i][1]>center[1]:
+            br_court = corners[i]
+    cantos[0] = bl_court
+    cantos[1] = tl_court
+    cantos[2] = tr_court
+    cantos[3] = br_court
+    return cantos
 
 
 def rectangularize_court(pano, plot=False):
@@ -146,6 +250,8 @@ def rectangularize_court(pano, plot=False):
     epsilon = 0.01 * cv2.arcLength(hull, True)
     approx = cv2.approxPolyDP(hull, epsilon, True)
     corners = approx.reshape(-1, 2)
+    approx = corners.copy()
+    corners = order_corners(corners)
     cv2.drawContours(pano, [approx], 0, 100, 5)
     cv2.drawContours(simple_court, [approx], 0, 255, 3)
 
@@ -182,28 +288,32 @@ def homography(rect, image, plot=False):
     return warped, M
 
 
-def rectify(pano_enhanced, corners, plot=False):
+def rectify(pano_enhanced, corners, plot=False, game_path='.'):
     # TODO: adapt this in a way that works in any setting
-    panoL = pano_enhanced[:, :1870]
-    panoR = pano_enhanced[:, 1870:]
-    cornersL = np.array([corners[0], corners[1], [1865, 55], [1869, 389]])
-    cornersR = np.array(
-        [[0, 389],
-         [0, 55],
-         [corners[2][0] - 1870, corners[2][1]],
-         [corners[3][0] - 1870, corners[3][1]]
-         ])
-    M = homography(corners, pano_enhanced)[1]
-    np.save("Rectify1.npy", M)
 
+    centros = encontrar_centros(pano_enhanced, corners, plot=plot)
+    center_line = int((centros[0][0]+centros[1][0])/2)
+    panoL = pano_enhanced[:, :center_line]
+    panoR = pano_enhanced[:, center_line:]
+    cornersL = np.array([corners[0], corners[1], centros[0], centros[1]])
+    cornersR = np.array(
+        [[centros[1][0] - center_line, centros[1][1]],
+         [centros[0][0] - center_line, centros[0][1]],
+         [corners[2][0] - center_line, corners[2][1]],
+         [corners[3][0] - center_line, corners[3][1]]
+         ])
+    
+    h, M = homography(corners, pano_enhanced)
+    np.save(game_path+'/Rectify1.npy', M)
     h1, ML = homography(cornersL, panoL)
-    np.save("RectifyL.npy", ML)
+    np.save(game_path+'/RectifyL.npy', ML)
 
     h2, MR = homography(cornersR, panoR)
-    np.save("RectifyR.npy", MR)
+    np.save(game_path+'/RectifyR.npy', MR)
 
     # rectified = np.hstack((h1, cv2.resize(h2, (int((h2.shape[0] / h1.shape[0]) * h1.shape[1]), h1.shape[0]))))
     rectified = np.hstack((h1, cv2.resize(h2, (h1.shape[1], h1.shape[0]))))
-    cv2.imwrite("rectified.png", rectified)
+    cv2.imwrite(game_path+"/rectified.png", rectified)
     if plot: plt_plot(cv2.cvtColor(rectified, cv2.COLOR_BGR2RGB))
     return rectified
+
